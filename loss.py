@@ -27,16 +27,6 @@ class CrossEntropy(Loss):
         super().__init__(self.cross_entropy, self.cross_entropy_derivative)
 
     def cross_entropy(self, y_true, y_pred):
-        return -np.mean(y_true * np.log(y_pred) + (1 - y_true) * np.log(1 - y_pred))
-
-    def cross_entropy_derivative(self, y_true, y_pred):
-        return (y_pred - y_true) / (y_pred * (1 - y_pred))
-
-class BinaryCrossEntropy(Loss):
-    def __init__(self):
-        super().__init__(self.cross_entropy, self.cross_entropy_derivative)
-
-    def cross_entropy(self, y_true, y_pred):
         return np.mean(-y_true * np.log(y_pred) - (1 - y_true) * np.log(1 - y_pred))
 
 

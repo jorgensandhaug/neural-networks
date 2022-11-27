@@ -4,7 +4,7 @@ from layers.activations import Sigmoid, Tanh, ReLU, Softmax
 from layers.dense import Dense
 from layers.convolutional_layer import Convolutional
 from layers.reshape import Reshape
-from loss import MeanSquaredError, CrossEntropy, BinaryCrossEntropy
+from loss import MeanSquaredError, CrossEntropy, CrossEntropy
 from network import NeuralNetwork
 import matplotlib.pyplot as plt
 from layers.logger import Logger
@@ -58,7 +58,7 @@ if __name__ == "__main__":
         Dense(128, 10),
         Softmax(),
     ]
-    loss = BinaryCrossEntropy()
+    loss = CrossEntropy()
     model = NeuralNetwork(layers, loss)
 
     # Train the model

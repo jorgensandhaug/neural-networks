@@ -1,7 +1,7 @@
 import numpy as np
 from layers.activations import Sigmoid, Tanh, ReLU, Softmax
 from layers.dense import Dense
-from loss import MeanSquaredError, BinaryCrossEntropy
+from loss import MeanSquaredError, CrossEntropy
 from network import NeuralNetwork
 import matplotlib.pyplot as plt
 from layers.logger import Logger
@@ -18,7 +18,7 @@ if __name__ == "__main__":
     batch_size = 1
     learning_rate = 0.1
 
-    loss_classes = [MeanSquaredError, BinaryCrossEntropy]
+    loss_classes = [MeanSquaredError, CrossEntropy]
     hidden_activation_classes = [Sigmoid, Tanh, ReLU]
     output_activation_classes = [Sigmoid, Softmax]
 

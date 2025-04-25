@@ -1,0 +1,588 @@
+.
+├── README.md
+├── combined.txt
+├── generate_readme.py
+├── layers
+│   ├── activations.py
+│   ├── convolutional_layer.py
+│   ├── dense.py
+│   ├── layer.py
+│   ├── logger.py
+│   └── reshape.py
+├── loss.py
+├── main.py
+├── mnist.py
+├── mnist_flattened.py
+├── mnist_tf.py
+├── network.py
+└── tree_combined.txt
+
+1 directory, 16 files
+import numpy as np
+from layers.layer import Layer
+from layers.activations import Sigmoid, Tanh, ReLU, Softmax
+from layers.dense import Dense
+from layers.convolutional_layer import Convolutional
+from layers.reshape import Reshape
+from loss import MeanSquaredError, CrossEntropy, CrossEntropy
+from network import NeuralNetwork
+import matplotlib.pyplot as plt
+from layers.logger import Logger
+
+# Test it on the mnist dataset
+if __name__ == "__main__":
+    from tensorflow.keras.datasets import mnist
+
+    # Load the dataset
+    (x_train, y_train), (x_test, y_test) = mnist.load_data()
+
+    # Grab only the first 5000 samples
+    x_train = x_train[:]
+    y_train = y_train[:]
+
+
+
+
+
+    # Normalize the dataset
+    x_train = x_train / 255
+    x_test = x_test / 255
+
+    # Print the max and min values
+    print(np.max(x_train), np.min(x_train))
+
+
+
+
+    # Print shape of the dataset
+    print(x_train.shape, y_train.shape, x_test.shape, y_test.shape)
+
+
+    # One-hot encode the labels to shape (y_train.shape[0], 10, 1)
+    y_train = np.eye(10)[y_train].reshape((y_train.shape[0], 10, 1))
+    y_test = np.eye(10)[y_test].reshape((y_test.shape[0], 10, 1))
+
+
+
+    print(x_train.shape, y_train.shape)
+
+
+
+
+    layers = [
+        Reshape((28, 28), (28*28, 1)),
+        Dense(28*28, 128),
+        ReLU(),
+        Dense(128, 128),
+        ReLU(),
+        Dense(128, 10),
+        Softmax(),
+    ]
+    loss = CrossEntropy()
+    model = NeuralNetwork(layers, loss)
+
+    # Train the model
+    model.train(x_train, y_train, learning_rate=0.01, epochs=100, batch_size=32, x_test=x_test, y_test=y_test)
+
+    # Make predictions
+    predictions = []
+    for i in range(len(x_test)):
+        pred = model.forward(x_test[i].reshape((1,) + x_test[i].shape))
+        predictions.append(np.argmax(pred))
+
+
+    # Display the prediction using matplotlib
+    fig = plt.figure()
+    for i in range(5):
+        plt.subplot(1, 5, i+1)
+        plt.imshow(x_test[i].reshape((28, 28)))
+        plt.title(f"Prediction: {predictions[i]}")
+    
+
+    plt.show()import numpy as np
+from layers.layer import Layer
+class Dense(Layer):
+    def __init__(self, input_size, output_size):
+        self.weights = np.random.rand(output_size, input_size) / input_size
+        self.biases = np.random.rand(output_size, 1) / input_size
+
+    def forward(self, x):
+        self.input = x
+        self.output = np.dot(self.weights, x) + self.biases
+        return self.output
+
+    def backward(self, output_gradient, learning_rate):
+        weights_gradient = np.dot(output_gradient, self.input.T)
+        input_gradient = np.dot(self.weights.T, output_gradient)
+
+        self.weights -= weights_gradient * learning_rate
+        self.biases -= output_gradient * learning_rate
+
+        return input_gradientimport numpy as np
+from layers.layer import Layer
+
+class ActivationLayer(Layer):
+    def __init__(self, activation, activation_derivative):
+        self.activation = activation
+        self.activation_derivative = activation_derivative
+
+    def forward(self, x):
+        self.input = x
+        self.output = self.activation(x)
+        return self.output
+
+    def backward(self, output_gradient, learning_rate):
+        input_gradient = output_gradient * self.activation_derivative(self.input)
+        return input_gradient
+
+
+class Sigmoid(ActivationLayer):
+    def __init__(self):
+        super().__init__(self.sigmoid, self.sigmoid_derivative)
+
+    def sigmoid(self, x):
+        sig = 1 / (1 + np.exp(-x, dtype=np.float64))
+        # sig = np.minimum(sig, 0.9999)  # Set upper bound
+        # sig = np.maximum(sig, 0.0001)  # Set lower bound
+        return sig
+
+    def sigmoid_derivative(self, x):
+        return self.sigmoid(x) * (1 - self.sigmoid(x))
+
+class Tanh(ActivationLayer):
+    def __init__(self):
+        super().__init__(self.tanh, self.tanh_derivative)
+
+    def tanh(self, x):
+        return np.tanh(x)
+
+    def tanh_derivative(self, x):
+        return 1 - np.tanh(x) ** 2
+
+class ReLU(ActivationLayer):
+    def __init__(self):
+        super().__init__(self.relu, self.relu_derivative)
+
+    def relu(self, x):
+        return np.maximum(0, x)
+
+    def relu_derivative(self, x):
+        x[x <= 0] = 0
+        x[x > 0] = 1
+        return x
+
+class Softmax(Layer):
+    def forward(self, x):
+        self.input = x
+        # Subtract the max value to avoid overflow
+        x = x - np.max(x)
+        exp = np.exp(x)
+        self.output = exp / np.sum(exp, keepdims=True)
+        return self.output
+
+    def backward(self, output_gradient, learning_rate):
+        n = np.size(self.output)
+        return np.dot((np.identity(n) - self.output.T) * self.output, output_gradient)from layers.layer import Layer
+class Reshape(Layer):
+    def __init__(self, input_shape, output_shape):
+        self.input_shape = input_shape
+        self.output_shape = output_shape
+
+    def forward(self, x):
+        self.input = x
+        self.output = x.reshape(self.output_shape)
+        return self.output
+
+    def backward(self, output_gradient, learning_rate):
+        return output_gradient.reshape(self.input_shape)
+import numpy as np
+from scipy import signal
+from layers.layer import Layer
+
+class Convolutional(Layer):
+    def __init__(self, input_shape, kernel_size, depth):
+        input_depth, input_height, input_width = input_shape
+        self.depth = depth
+        self.input_shape = input_shape
+        self.input_depth = input_depth
+        self.output_shape = (depth, input_height - kernel_size + 1, input_width - kernel_size + 1)
+        self.kernels_shape = (depth, input_depth, kernel_size, kernel_size)
+        self.kernels = np.random.randn(*self.kernels_shape) / np.sqrt(input_depth * kernel_size * kernel_size)
+        self.biases = np.random.randn(*self.output_shape) / np.sqrt(input_depth * kernel_size * kernel_size)
+
+    def forward(self, input):
+        self.input = input
+        self.output = np.copy(self.biases)
+        #print(self.input[0].shape, self.kernels[0, 0].shape)
+        for i in range(self.depth):
+            for j in range(self.input_depth):
+                self.output[i] += signal.correlate2d(self.input[j], self.kernels[i, j], "valid")
+        return self.output
+
+    def backward(self, output_gradient, learning_rate):
+        kernels_gradient = np.zeros(self.kernels_shape)
+        input_gradient = np.zeros(self.input_shape)
+
+        for i in range(self.depth):
+            for j in range(self.input_depth):
+                kernels_gradient[i, j] = signal.correlate2d(self.input[j], output_gradient[i], "valid")
+                input_gradient[j] += signal.convolve2d(output_gradient[i], self.kernels[i, j], "full")
+
+        self.kernels -= learning_rate * kernels_gradient
+        self.biases -= learning_rate * output_gradient
+        return input_gradient
+import numpy as np
+from layers.layer import Layer
+class Logger(Layer):
+    def __init__(self, name):
+        self.name = name
+    def forward(self, x):
+        self.input = x
+        self.output = x
+        print("Logger "+self.name, x.shape, np.max(x), np.min(x))
+
+        return self.output
+    def backward(self, output_gradient, learning_rate):
+        print("Logger "+self.name + " BACKWARD", output_gradient.shape, output_gradient)
+        return output_gradientimport numpy as np
+class Layer:
+    def __init__(self):
+        self.input = None
+        self.output = None
+
+    def forward(self, x):
+        pass
+
+    def backward(self, output_gradient, learning_rate):
+        passimport requests
+import os
+import openai
+
+def generate_readme(combined_file):
+    openai.api_key = os.getenv("OPENAI_API_KEY")
+
+    response = openai.Completion.create(
+        engine="davinci",
+        prompt=combined_file,
+        temperature=0.9,
+        # Set max_tokens to maximum possible
+        max_tokens=2048,
+        top_p=1,
+        frequency_penalty=0,
+        presence_penalty=0.6,   
+        stop=["\n\n"]
+    )
+  
+    # Parse the response and return the generated README.md file
+    return response.choices[0].text
+import numpy as np
+
+class Loss:
+    def __init__(self, loss, loss_derivative):
+        self.loss = loss
+        self.loss_derivative = loss_derivative
+
+    def __call__(self, y_true, y_pred):
+        return self.loss(y_true, y_pred)
+
+    def derivative(self, y_true, y_pred):
+        return self.loss_derivative(y_true, y_pred)
+
+class MeanSquaredError(Loss):
+    def __init__(self):
+        super().__init__(self.mse, self.mse_derivative)
+
+    def mse(self, y_true, y_pred):
+        return np.mean(np.power(y_true - y_pred, 2))
+
+    def mse_derivative(self, y_true, y_pred):
+        return 2 * (y_pred - y_true) / y_true.size
+
+
+class CrossEntropy(Loss):
+    def __init__(self):
+        super().__init__(self.cross_entropy, self.cross_entropy_derivative)
+
+    def cross_entropy(self, y_true, y_pred):
+        return np.mean(-y_true * np.log(y_pred) - (1 - y_true) * np.log(1 - y_pred))
+
+
+    def cross_entropy_derivative(self, y_true, y_pred):
+        return ((1 - y_true) / (1 - y_pred) - y_true / y_pred) / np.size(y_true)
+
+    
+
+import tensorflow as tf
+import tensorflow_datasets as tfds
+import matplotlib.pyplot as plt
+
+(ds_train, ds_test), ds_info = tfds.load(
+    'mnist',
+    split=['train', 'test'],
+    shuffle_files=True,
+    as_supervised=True,
+    with_info=True,
+)
+
+def normalize_img(image, label):
+  """Normalizes images: `uint8` -> `float32`."""
+  return tf.cast(image, tf.float32) / 255., label
+
+ds_train = ds_train.map(
+    normalize_img, num_parallel_calls=tf.data.AUTOTUNE)
+ds_train = ds_train.cache()
+ds_train = ds_train.shuffle(ds_info.splits['train'].num_examples)
+ds_train = ds_train.batch(128)
+ds_train = ds_train.prefetch(tf.data.AUTOTUNE)
+
+ds_test = ds_test.map(
+    normalize_img, num_parallel_calls=tf.data.AUTOTUNE)
+ds_test = ds_test.batch(128)
+ds_test = ds_test.cache()
+ds_test = ds_test.prefetch(tf.data.AUTOTUNE)
+
+model = tf.keras.models.Sequential([
+  tf.keras.layers.Flatten(input_shape=(28, 28)),
+  tf.keras.layers.Dense(128, activation='relu'),
+  tf.keras.layers.Dense(10)
+])
+
+model.compile(
+    optimizer=tf.keras.optimizers.Adam(0.001),
+    loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
+    metrics=[tf.keras.metrics.SparseCategoricalAccuracy()],
+)
+
+model.fit(
+    ds_train,
+    epochs=6,
+    validation_data=ds_test,
+)
+
+
+# Visualize some test results and their predictions using matplotlib
+for x, y in ds_test.take(1):
+    y_pred = model(x)
+    y_pred = tf.argmax(y_pred, axis=1)
+    y_pred = y_pred.numpy()
+    x = x.numpy()
+    y = y.numpy()
+    for i in range(10):
+        plt.subplot(2, 5, i + 1)
+        plt.xticks([])
+        plt.yticks([])
+        plt.grid(False)
+        plt.imshow(x[i].reshape((28, 28)), cmap=plt.cm.binary)
+        plt.xlabel("Actual: %s  Pred: %s" % (y[i], y_pred[i]))
+    plt.show()
+
+import numpy as np
+
+
+class NeuralNetwork:
+    def __init__(self, layers, loss):
+        self.layers = layers
+        self.loss = loss
+
+    def forward(self, x):
+        for layer in self.layers:
+            x = layer.forward(x)
+        return x
+
+    def backward(self, output_gradient, learning_rate):
+        for layer in reversed(self.layers):
+            output_gradient = layer.backward(output_gradient, learning_rate)
+
+    def train(self, x, y, learning_rate=0.01, epochs=100, print_every=10, batch_size=32, x_test=None, y_test=None):
+        """
+        Train the neural network using stochastic gradient descent
+        """
+        def display_accuracy():
+            if(x_test is not None and y_test is not None):
+                predictions = np.zeros(y_test.shape)
+                for i in range(len(x_test)):
+                    y_pred = self.forward(x_test[i])
+                    predictions[i] = y_pred
+
+                accuracy = np.mean(np.argmax(predictions, axis=1) == np.argmax(y_test, axis=1))
+
+                # Print accuracy in red if it's below 50%, otherwise green
+                if accuracy < 0.9:
+                    print(f"\033[91mTest Accuracy: {accuracy}\033[0m")
+                else:
+                    print(f"\033[92mTest Accuracy: {accuracy}\033[0m")
+
+
+
+        for epoch in range(epochs):
+            loss = 0
+
+            # Select a random subset of the data
+            # This is called stochastic gradient descent
+            # Shuffle the data
+            permutation = np.random.permutation(x.shape[0])
+            x_perm = x[permutation]
+            y_perm = y[permutation]
+        
+
+            # Select a single batch
+            x_batch = x_perm[:len(x_perm) // batch_size]
+            y_batch = y_perm[:len(y_perm) // batch_size]
+
+
+
+            for i in range(len(x_batch)):
+                x_sample = x_batch[i]
+                y_true = y_batch[i]
+                y_pred = self.forward(x_sample)
+                y_true = y_true.reshape(y_pred.shape)
+                loss_gradient = self.loss.derivative(y_true, y_pred)
+                loss += self.loss(y_true, y_pred)
+                self.backward(loss_gradient, learning_rate)
+            
+            
+            if epoch % print_every == 0:
+                print(f"Epoch {epoch}: Mean loss = {loss/len(x_batch)}")
+                display_accuracy()
+
+
+        print(f"Epoch {epoch}: Mean loss = {loss/len(x_batch)}")
+        display_accuracy()
+    
+
+            
+    def __repr__(self):
+        return f"NeuralNetwork({self.layers}, {self.loss}, {self.loss.derivative})"
+
+    def __str__(self):
+        return f"NeuralNetwork({self.layers}, {self.loss}, {self.loss.derivative})"
+import numpy as np
+from layers.activations import Sigmoid, Tanh, ReLU, Softmax
+from layers.dense import Dense
+from loss import MeanSquaredError, CrossEntropy
+from network import NeuralNetwork
+import matplotlib.pyplot as plt
+from layers.logger import Logger
+from layers.reshape import Reshape
+
+
+if __name__ == "__main__":
+    # XOR
+    x = np.array([[0, 0], [0, 1], [1, 0], [1, 1]]).reshape((4, 2, 1))
+    y = np.array([[1, 0], [0, 1], [0, 1], [1, 0]]).reshape((4, 2, 1))
+    print(x.shape, y.shape)
+    epochs = 10000
+    print_every = 1000
+    batch_size = 1
+    learning_rate = 0.1
+
+    loss_classes = [MeanSquaredError, CrossEntropy]
+    hidden_activation_classes = [Sigmoid, Tanh, ReLU]
+    output_activation_classes = [Sigmoid, Softmax]
+
+    for loss_class in loss_classes:
+        for hidden_activation_class in hidden_activation_classes:
+            for output_activation_class in output_activation_classes:
+                print("Loss: ", loss_class.__name__, "Hidden Activation: ", hidden_activation_class.__name__, "Output Activation: ", output_activation_class.__name__)
+                layers = [
+                    Dense(2, 3),
+                    hidden_activation_class(),
+                    Dense(3, 2),
+                    output_activation_class(),
+                ]
+
+                loss = loss_class()
+                model = NeuralNetwork(layers, loss)
+                model.train(x, y, epochs=epochs, print_every=print_every, batch_size=batch_size, learning_rate=learning_rate, x_test=x, y_test=y)
+    
+                # Make predictions
+                for i in range(len(x)):
+                    print("Prediction: ", model.forward(x[i]), "Actual: ", y[i])
+
+                print("------------------------------------------------------")
+
+import numpy as np
+from layers.layer import Layer
+from layers.activations import Sigmoid, Tanh, ReLU, Softmax
+from layers.dense import Dense
+from layers.convolutional_layer import Convolutional
+from layers.reshape import Reshape
+from loss import MeanSquaredError, CrossEntropy
+from network import NeuralNetwork
+import matplotlib.pyplot as plt
+from layers.logger import Logger
+
+# Test it on the mnist dataset
+if __name__ == "__main__":
+    from tensorflow.keras.datasets import mnist
+
+    # Load the dataset
+    (x_train, y_train), (x_test, y_test) = mnist.load_data()
+
+    # Grab only the first 5000 samples
+    x_train = x_train[:10000]
+    y_train = y_train[:10000]
+
+
+
+
+
+    # Normalize the dataset
+    x_train = x_train / 255
+    x_test = x_test / 255
+
+    # Print the max and min values
+    print(np.max(x_train), np.min(x_train))
+
+
+
+
+    # Print shape of the dataset
+    print(x_train.shape, y_train.shape, x_test.shape, y_test.shape)
+
+
+    # One-hot encode the labels to shape (y_train.shape[0], 10, 1)
+    y_train = np.eye(10)[y_train].reshape((y_train.shape[0], 10, 1))
+    y_test = np.eye(10)[y_test].reshape((y_test.shape[0], 10, 1))
+
+
+
+    print(x_train.shape, y_train.shape)
+
+
+
+
+    kernel_size = 3
+    n = 28-kernel_size+1
+    layers = [
+        Reshape((28, 28), (1, 28, 28)),
+        Convolutional((1, 28, 28), kernel_size, 4),
+        ReLU(),
+        Reshape((4, n, n), (4*n*n, 1)),
+        Dense(4*n*n, 128),
+        ReLU(),
+        Dense(128, 10),
+        Softmax(),
+    ]
+    loss = CrossEntropy()
+    model = NeuralNetwork(layers, loss)
+
+    # Train the model
+    model.train(x_train, y_train, learning_rate=0.01, epochs=100, batch_size=32, x_test=x_test, y_test=y_test)
+
+    # Make predictions
+    predictions = []
+    for i in range(len(x_test)):
+        pred = model.forward(x_test[i].reshape((1,) + x_test[i].shape))
+        predictions.append(np.argmax(pred))
+
+
+    # Display the prediction using matplotlib
+    fig = plt.figure()
+    for i in range(5):
+        plt.subplot(1, 5, i+1)
+        plt.imshow(x_test[i].reshape((28, 28)))
+        plt.title(f"Prediction: {predictions[i]}")
+    
+
+    plt.show()
